@@ -33,14 +33,11 @@ jobs:
             -print | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found in repository."
-            echo "Upload the School Management ZIP first."
+            echo "ERROR: No ZIP file found."
             exit 1
           fi
 
-          echo "ZIP FOUND:"
-          echo "$ZIP_FILE"
-
+          echo "ZIP found: $ZIP_FILE"
           echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
 
       - name: Extract project
@@ -53,9 +50,7 @@ jobs:
 
           unzip -q "$ZIP_FILE" -d app_source
 
-          echo "ZIP extracted."
-
-      - name: Locate pubspec.yaml
+      - name: Locate Flutter project
         shell: bash
         run: |
           set -e
@@ -66,41 +61,16 @@ jobs:
             -print | head -n 1)
 
           if [ -z "$PUBSPEC" ]; then
-            echo "ERROR: pubspec.yaml was not found inside ZIP."
-            echo "Files found:"
-            find app_source -maxdepth 3 -type f | head -100
+            echo "ERROR: pubspec.yaml not found."
             exit 1
           fi
 
           APP_DIR=$(dirname "$PUBSPEC")
 
-          echo "Flutter project:"
-          echo "$APP_DIR"
+          test -f "$APP_DIR/lib/main.dart"
 
+          echo "Flutter project: $APP_DIR"
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
-
-      - name: Verify Flutter files
-        shell: bash
-        run: |
-          set -e
-
-          echo "Checking:"
-          echo "$APP_DIR"
-
-          if [ ! -f "$APP_DIR/pubspec.yaml" ]; then
-            echo "ERROR: pubspec.yaml missing."
-            exit 1
-          fi
-
-          if [ ! -f "$APP_DIR/lib/main.dart" ]; then
-            echo "ERROR: lib/main.dart missing."
-            echo ""
-            echo "lib contents:"
-            find "$APP_DIR/lib" -maxdepth 2 -type f 2>/dev/null || true
-            exit 1
-          fi
-
-          echo "Flutter project is valid."
 
       - name: Prepare Android
         shell: bash
@@ -110,37 +80,33 @@ jobs:
           cd "$APP_DIR"
 
           if [ ! -d android ]; then
-            echo "Creating Android project..."
             flutter create . \
               --platforms=android \
               --org=com.schoolmanagement
-          else
-            echo "Android folder already exists."
           fi
 
-      - name: Flutter Pub Get
+      - name: Install dependencies
         shell: bash
         run: |
           cd "$APP_DIR"
           flutter pub get
 
-      - name: Flutter Analyze
+      - name: Analyze application code
         shell: bash
         run: |
-          cd "$APP_DIR"
-          flutter analyze
+          set -e
 
-      - name: Flutter Test
-        shell: bash
-        run: |
           cd "$APP_DIR"
-          flutter test
 
-      - name: Build APK
+          flutter analyze lib
+
+      - name: Build Release APK
         shell: bash
         env:
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
         run: |
+          set -e
+
           cd "$APP_DIR"
 
           flutter build apk --release \
@@ -150,6 +116,8 @@ jobs:
       - name: Verify APK
         shell: bash
         run: |
+          set -e
+
           APK="$APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
 
           if [ ! -f "$APK" ]; then
@@ -157,7 +125,10 @@ jobs:
             exit 1
           fi
 
-          echo "APK SUCCESSFULLY CREATED:"
+          echo "===================================="
+          echo "APK BUILD SUCCESSFUL"
+          echo "===================================="
+
           ls -lh "$APK"
 
       - name: Upload APK
