@@ -1,0 +1,127 @@
+name: School Management APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Find project ZIP
+        run: |
+          set -e
+
+          ZIP_FILE=$(find . -type f \
+            -name "school_management_FINAL_CLEAN.zip" \
+            -print -quit)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: school_management_FINAL_CLEAN.zip not found."
+            exit 1
+          fi
+
+          echo "Found: $ZIP_FILE"
+          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
+
+      - name: Extract project ZIP
+        run: |
+          set -e
+
+          rm -rf app_source
+          mkdir -p app_source
+
+          unzip -q "$ZIP_FILE" -d app_source
+
+          echo "ZIP extracted successfully."
+
+      - name: Find Flutter project
+        run: |
+          set -e
+
+          PUBSPEC=$(find app_source \
+            -type f \
+            -name "pubspec.yaml" \
+            -print -quit)
+
+          if [ -z "$PUBSPEC" ]; then
+            echo "ERROR: pubspec.yaml not found."
+            exit 1
+          fi
+
+          APP_DIR=$(dirname "$PUBSPEC")
+
+          if [ ! -f "$APP_DIR/lib/main.dart" ]; then
+            echo "ERROR: lib/main.dart not found."
+            exit 1
+          fi
+
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+
+      - name: Prepare Android
+        run: |
+          set -e
+          cd "$APP_DIR"
+
+          if [ ! -d "android" ]; then
+            flutter create . \
+              --platforms=android \
+              --org=com.schoolmanagement
+          fi
+
+      - name: Install dependencies
+        run: |
+          cd "$APP_DIR"
+          flutter pub get
+
+      - name: Analyze
+        run: |
+          cd "$APP_DIR"
+          flutter analyze
+
+      - name: Test
+        run: |
+          cd "$APP_DIR"
+          flutter test
+
+      - name: Build APK
+        env:
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          cd "$APP_DIR"
+
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL=https://syspfaiggqoopcyrxqvg.supabase.co \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+
+      - name: Verify APK
+        run: |
+          APK="$APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "APK was not created."
+            exit 1
+          fi
+
+          echo "APK created successfully."
+          ls -lh "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: school-management-release-apk
+          path: ${{ env.APP_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
