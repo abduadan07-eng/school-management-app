@@ -1,30 +1,18 @@
-# School Management System
+# Phase 17 Supabase Integration Tests
 
-Flutter + Supabase multi-school School Management System.
+Run `supabase/PHASE17_DIAGNOSTIC.sql` in the Supabase SQL Editor first.
 
-## Included
-- Existing school-management UI/design preserved from the selected project base.
-- Super Admin dashboard for schools, payments, support and platform management.
-- School Admin, Teacher, Student and Parent modules.
-- Supabase PostgreSQL/Auth/Storage/Edge Functions/RLS project files.
-- New Supabase project configuration only.
-- One GitHub Actions workflow that generates Android files, runs `flutter analyze`, runs tests, and builds the release APK.
+Then deploy the three onboarding functions and test these cases:
 
-## Supabase
-Project URL:
-`https://syspfaiggqoopcyrxqvg.supabase.co`
+1. Valid School Access Code + valid Student Admission Number -> account found.
+2. Valid school + wrong admission number -> rejected.
+3. Valid school A + student from school B -> rejected.
+4. Unactivated account -> setup required.
+5. Activated account -> sign-in email returned, then normal Auth password sign-in.
+6. Second setup attempt -> rejected as already activated.
+7. Authenticated school A user cannot read school B rows through the Data API.
+8. Student/teacher/parent records cannot be read across schools.
+9. Attendance/result upserts work only within the current school.
+10. Storage access is tested separately for school A/B before production.
 
-The Flutter client uses the Supabase publishable key. No service-role key or database password belongs in the app.
-
-## Build on GitHub
-1. Upload/extract this project into the repository root.
-2. Open **Actions**.
-3. Select **Build School Management APK**.
-4. Press **Run workflow**.
-5. Wait for `flutter analyze`, tests and APK build to finish.
-6. Download the artifact `school-management-release-apk`.
-
-The workflow intentionally fails if analysis, tests, or the APK build fails; this prevents a failed build from being presented as a successful release.
-
-## Important
-The database migrations must be applied to the new Supabase project before real login/data use. RLS should be tested with separate school accounts before production release.
+Never put a Supabase secret/service-role key in Flutter or in this repository.
