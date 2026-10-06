@@ -1,0 +1,74 @@
+name: School Management - Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Check Flutter
+        run: |
+          flutter --version
+          dart --version
+
+      - name: Verify Flutter project
+        run: |
+          test -f pubspec.yaml
+          test -f lib/main.dart
+          echo "Flutter project verified successfully."
+
+      - name: Generate Android platform
+        run: |
+          if [ ! -d "android" ]; then
+            flutter create . --platforms=android --org=com.schoolmanagement
+          else
+            echo "Android folder already exists."
+          fi
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze project
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build release APK
+        env:
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL=https://syspfaiggqoopcyrxqvg.supabase.co \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+
+      - name: Verify APK
+        run: |
+          test -f build/app/outputs/flutter-apk/app-release.apk
+          ls -lh build/app/outputs/flutter-apk/app-release.apk
+          echo "APK BUILD SUCCESSFUL."
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: school-management-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
