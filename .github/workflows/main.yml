@@ -12,92 +12,136 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # 1. Download repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2. Setup Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Find project ZIP
-        run: |
-          set -e
-
-          ZIP_FILE=$(find . -type f \
-            -name "school_management_FINAL_CLEAN.zip" \
-            -print -quit)
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: school_management_FINAL_CLEAN.zip not found."
-            exit 1
-          fi
-
-          echo "Found: $ZIP_FILE"
-          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
-
-      - name: Extract project ZIP
+      # 3. Find Flutter project or ZIP
+      - name: Prepare project
+        shell: bash
         run: |
           set -e
 
           rm -rf app_source
           mkdir -p app_source
 
-          unzip -q "$ZIP_FILE" -d app_source
-
-          echo "ZIP extracted successfully."
-
-      - name: Find Flutter project
-        run: |
-          set -e
-
-          PUBSPEC=$(find app_source \
+          # First: check if pubspec.yaml already exists
+          DIRECT_PUBSPEC=$(find . \
+            -path "./.git" -prune -o \
             -type f \
             -name "pubspec.yaml" \
             -print -quit)
 
-          if [ -z "$PUBSPEC" ]; then
-            echo "ERROR: pubspec.yaml not found."
-            exit 1
+          if [ -n "$DIRECT_PUBSPEC" ]; then
+            echo "Flutter project found directly in repository."
+
+            DIRECT_DIR=$(dirname "$DIRECT_PUBSPEC")
+
+            if [ "$DIRECT_DIR" = "." ]; then
+              echo "APP_DIR=." >> "$GITHUB_ENV"
+            else
+              cp -r "$DIRECT_DIR"/. app_source/
+              echo "APP_DIR=app_source" >> "$GITHUB_ENV"
+            fi
+
+          else
+            # Find ANY ZIP file
+            ZIP_FILE=$(find . \
+              -path "./.git" -prune -o \
+              -type f \
+              -iname "*.zip" \
+              -print -quit)
+
+            if [ -z "$ZIP_FILE" ]; then
+              echo "ERROR: No Flutter project and no ZIP file found."
+              echo "Please upload the project ZIP to the repository."
+              exit 1
+            fi
+
+            echo "ZIP found: $ZIP_FILE"
+
+            unzip -q "$ZIP_FILE" -d app_source
+
+            PUBSPEC=$(find app_source \
+              -type f \
+              -name "pubspec.yaml" \
+              -print -quit)
+
+            if [ -z "$PUBSPEC" ]; then
+              echo "ERROR: pubspec.yaml was not found inside the ZIP."
+              exit 1
+            fi
+
+            PROJECT_DIR=$(dirname "$PUBSPEC")
+
+            if [ "$PROJECT_DIR" = "app_source" ]; then
+              echo "APP_DIR=app_source" >> "$GITHUB_ENV"
+            else
+              echo "APP_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+            fi
           fi
 
-          APP_DIR=$(dirname "$PUBSPEC")
-
-          if [ ! -f "$APP_DIR/lib/main.dart" ]; then
-            echo "ERROR: lib/main.dart not found."
-            exit 1
-          fi
-
-          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
-
-      - name: Prepare Android
+      # 4. Verify Flutter project
+      - name: Verify project
+        shell: bash
         run: |
           set -e
+
+          echo "Project directory:"
+          echo "$APP_DIR"
+
+          test -f "$APP_DIR/pubspec.yaml"
+          test -f "$APP_DIR/lib/main.dart"
+
+          echo "Flutter project verified successfully."
+
+      # 5. Generate Android files if missing
+      - name: Prepare Android
+        shell: bash
+        run: |
+          set -e
+
           cd "$APP_DIR"
 
           if [ ! -d "android" ]; then
+            echo "Android folder not found."
+            echo "Generating Android project..."
+
             flutter create . \
               --platforms=android \
               --org=com.schoolmanagement
+          else
+            echo "Android folder already exists."
           fi
 
-      - name: Install dependencies
+      # 6. Install packages
+      - name: Flutter Pub Get
         run: |
           cd "$APP_DIR"
           flutter pub get
 
-      - name: Analyze
+      # 7. Analyze
+      - name: Flutter Analyze
         run: |
           cd "$APP_DIR"
           flutter analyze
 
-      - name: Test
+      # 8. Test
+      - name: Flutter Test
         run: |
           cd "$APP_DIR"
           flutter test
 
-      - name: Build APK
+      # 9. Build APK
+      - name: Build Release APK
         env:
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
         run: |
@@ -107,18 +151,26 @@ jobs:
             --dart-define=SUPABASE_URL=https://syspfaiggqoopcyrxqvg.supabase.co \
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
 
+      # 10. Verify APK
       - name: Verify APK
+        shell: bash
         run: |
+          set -e
+
           APK="$APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "APK was not created."
+            echo "ERROR: APK was not created."
             exit 1
           fi
 
-          echo "APK created successfully."
+          echo "================================"
+          echo "APK BUILD SUCCESSFUL"
+          echo "================================"
+
           ls -lh "$APK"
 
+      # 11. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
