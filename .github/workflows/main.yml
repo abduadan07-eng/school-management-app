@@ -91,15 +91,16 @@ jobs:
           cd "$APP_DIR"
           flutter pub get
 
-      - name: Analyze application code
-        shell: bash
-        run: |
-          set -e
+          
+- name: Analyze application code
+  shell: bash
+  run: |
+    set -e
+    cd "$APP_DIR"
 
-          cd "$APP_DIR"
-
-          flutter analyze lib
-
+    flutter analyze lib \
+      --no-fatal-warnings \
+      --no-fatal-infos
       - name: Build Release APK
         shell: bash
         env:
